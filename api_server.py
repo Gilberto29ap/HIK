@@ -121,7 +121,7 @@ def inspect():
             "content_type": request.content_type,
             "content_length": request.content_length,
             "mimetype": request.mimetype,
-            "charset": request.charset
+            "mimetype_params": request.mimetype_params
         }
     }
     
