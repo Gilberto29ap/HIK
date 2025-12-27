@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from datetime import datetime
 import json
+import os
 
 app = Flask(__name__)
 
@@ -126,6 +127,88 @@ def inspect():
     }
     
     return jsonify(inspection_data)
+
+# Endpoint para capturar e salvar requisição bruta
+@app.route('/api/capture', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'])
+def capture():
+    """Captura a requisição completa e salva em arquivo para análise posterior"""
+    
+    # Criar diretório para capturas se não existir
+    captures_dir = 'captured_requests'
+    os.makedirs(captures_dir, exist_ok=True)
+    
+    # Nome do arquivo com timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    filename = f"{captures_dir}/request_{timestamp}.txt"
+    
+    # Montar requisição HTTP bruta
+    raw_request = []
+    
+    # Linha de requisição
+    raw_request.append(f"{request.method} {request.full_path if request.query_string else request.path} HTTP/1.1")
+    
+    # Headers
+    for header, value in request.headers:
+        raw_request.append(f"{header}: {value}")
+    
+    raw_request.append("")  # Linha em branco entre headers e body
+    
+    # Body
+    if request.data:
+        try:
+            # Tentar decodificar como texto
+            body_str = request.data.decode('utf-8', errors='replace')
+            raw_request.append(body_str)
+        except:
+            raw_request.append(f"[Binary data: {len(request.data)} bytes]")
+    
+    # Salvar em arquivo
+    raw_content = "\n".join(raw_request)
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(raw_content)
+    
+    # Também salvar versão JSON estruturada
+    json_filename = filename.replace('.txt', '.json')
+    
+    # Capturar dados estruturados
+    body_data = None
+    body_raw = None
+    if request.data:
+        try:
+            body_data = request.get_json()
+        except:
+            body_raw = request.data.decode('utf-8', errors='replace')
+    
+    form_data = dict(request.form) if request.form else None
+    files_data = {key: value.filename for key, value in request.files.items()} if request.files else None
+    
+    structured_data = {
+        "timestamp": datetime.now().isoformat(),
+        "method": request.method,
+        "url": request.url,
+        "path": request.path,
+        "query_string": request.query_string.decode('utf-8'),
+        "headers": dict(request.headers),
+        "client_ip": request.remote_addr,
+        "body": {
+            "json": body_data,
+            "raw": body_raw,
+            "form": form_data,
+            "files": files_data
+        }
+    }
+    
+    with open(json_filename, 'w', encoding='utf-8') as f:
+        json.dump(structured_data, f, indent=2, ensure_ascii=False)
+    
+    return jsonify({
+        "message": "Requisição capturada com sucesso",
+        "files": {
+            "raw": filename,
+            "json": json_filename
+        },
+        "timestamp": datetime.now().isoformat()
+    }), 200
 
 # Catch-all para qualquer outra rota
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
